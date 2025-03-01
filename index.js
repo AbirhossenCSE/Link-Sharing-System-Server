@@ -31,6 +31,28 @@ async function run() {
         const userCollection = database.collection('users');
 
 
+
+        // post user
+        app.post('/users', async (req, res) => {
+            const { uid, email, displayName } = req.body;
+
+            if (!uid || !email) {
+                return res.status(400).json({ error: "Missing required fields" });
+            }
+
+            // Check if user already exists
+            const existingUser = await userCollection.findOne({ uid });
+
+            if (!existingUser) {
+                const newUser = { uid, email, displayName };
+                const result = await userCollection.insertOne(newUser);
+                res.status(201).json(result);
+            } else {
+                res.status(200).json({ message: "User already exists" });
+            }
+        });
+
+
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
         // console.log("Pinged your deployment. You successfully connected to MongoDB!");
