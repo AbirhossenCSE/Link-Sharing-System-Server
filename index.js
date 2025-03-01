@@ -102,6 +102,71 @@ async function run() {
         });
 
 
+        // ✅ **Get User's Uploaded Files**
+        app.get('/uploads', async (req, res) => {
+            try {
+                if (!filesCollection) {
+                    return res.status(500).json({ error: "Database not initialized" });
+                }
+
+                const { email } = req.query;
+                if (!email) {
+                    return res.status(400).json({ error: "Email is required" });
+                }
+
+                const userUploads = await filesCollection.find({ email }).toArray();
+                res.json(userUploads);
+            } catch (error) {
+                console.error("Error fetching user uploads:", error);
+                res.status(500).json({ error: "Internal server error" });
+            }
+        });
+
+        // 🟢 Update file link
+        app.put('/uploads/:id', async (req, res) => {
+            const { id } = req.params;
+            const { fileUrl } = req.body;
+
+            try {
+                const result = await filesCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { fileUrl } }
+                );
+
+                if (result.modifiedCount > 0) {
+                    res.json({ success: true, message: "File updated successfully" });
+                } else {
+                    res.status(400).json({ error: "Update failed" });
+                }
+            } catch (error) {
+                console.error("Error updating file:", error);
+                res.status(500).json({ error: "Internal Server Error" });
+            }
+        });
+
+
+        // ✅ **Delete a Shared File**
+        app.delete('/uploads/:id', async (req, res) => {
+            try {
+                if (!filesCollection) {
+                    return res.status(500).json({ error: "Database not initialized" });
+                }
+
+                const id = req.params.id;
+                const result = await filesCollection.deleteOne({ _id: new ObjectId(id) });
+
+                if (result.deletedCount > 0) {
+                    res.json({ message: "File deleted successfully" });
+                } else {
+                    res.status(404).json({ error: "File not found" });
+                }
+            } catch (error) {
+                console.error("Error deleting file:", error);
+                res.status(500).json({ error: "Internal server error" });
+            }
+        });
+
+
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
         // console.log("Pinged your deployment. You successfully connected to MongoDB!");
