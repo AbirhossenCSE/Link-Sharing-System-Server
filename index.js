@@ -1,23 +1,19 @@
+
 const express = require('express');
 const cors = require('cors');
-const app = express();
-
-// jwt-1
 const jwt = require('jsonwebtoken');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+require('dotenv').config();
 
-require('dotenv').config()
-
+const app = express();
 const port = process.env.PORT || 5000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-
-
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+// MongoDB Connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.wpavw.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
     serverApi: {
         version: ServerApiVersion.v1,
@@ -26,51 +22,52 @@ const client = new MongoClient(uri, {
     }
 });
 
+// JWT Secret
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
+
+// MongoDB Collections
+let userCollection, filesCollection;
+
 async function run() {
     try {
-        // Connect the client to the server	(optional starting in v4.7)
-        // await client.connect();
+        await client.connect();
+        console.log("Connected to MongoDB!");
 
         const database = client.db('ShareLink');
-        const userCollection = database.collection('users');
-        const filesCollection = database.collection('files');
+        userCollection = database.collection('users');
+        filesCollection = database.collection('files');
+        textCollection = database.collection("textData");
 
-
-        // jwt related API---- JWT-2
+        // JWT API
         app.post('/jwt', async (req, res) => {
             const user = req.body;
-            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+            const token = jwt.sign(user, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
             res.send({ token });
-        })
+        });
 
-        // middleware----------JWT-3
+        // Middleware to verify JWT
         const verifyToken = (req, res, next) => {
-            // console.log('Inside VerifyToken', req.headers.authorization);
             if (!req.headers.authorization) {
-                return res.status(401).send({ message: 'forbidden access' });
+                return res.status(401).send({ message: 'Forbidden access' });
             }
             const token = req.headers.authorization.split(' ')[1];
-            jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+            jwt.verify(token, ACCESS_TOKEN_SECRET, (err, decoded) => {
                 if (err) {
-                    return res.status(401).send({ message: 'forbidden-access' })
+                    return res.status(401).send({ message: 'Forbidden access' });
                 }
                 req.decoded = decoded;
                 next();
-            })
-            // next();
-        }
+            });
+        };
 
-        // post user
+        // Save User
         app.post('/users', async (req, res) => {
             const { uid, email, displayName } = req.body;
-
             if (!uid || !email) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
 
-            // Check if user already exists
             const existingUser = await userCollection.findOne({ uid });
-
             if (!existingUser) {
                 const newUser = { uid, email, displayName };
                 const result = await userCollection.insertOne(newUser);
@@ -80,16 +77,13 @@ async function run() {
             }
         });
 
-
-        // Route to handle file upload and user info
+        // Upload File
         app.post('/upload', async (req, res) => {
             const { username, email, fileUrl } = req.body;
-
             if (!username || !email || !fileUrl) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
 
-            // Save the user and file data in MongoDB
             const newFileData = {
                 username,
                 email,
@@ -101,88 +95,112 @@ async function run() {
             res.status(201).json({ message: "File data saved successfully", data: result });
         });
 
-
-        // ✅ **Get User's Uploaded Files**
+        // Get User's Uploaded Files
         app.get('/uploads', async (req, res) => {
-            try {
-                if (!filesCollection) {
-                    return res.status(500).json({ error: "Database not initialized" });
-                }
-
-                const { email } = req.query;
-                if (!email) {
-                    return res.status(400).json({ error: "Email is required" });
-                }
-
-                const userUploads = await filesCollection.find({ email }).toArray();
-                res.json(userUploads);
-            } catch (error) {
-                console.error("Error fetching user uploads:", error);
-                res.status(500).json({ error: "Internal server error" });
+            const { email } = req.query;
+            if (!email) {
+                return res.status(400).json({ error: "Email is required" });
             }
+
+            const userUploads = await filesCollection.find({ email }).toArray();
+            res.json(userUploads);
         });
 
-        // 🟢 Update file link
+        // Update File Link
         app.put('/uploads/:id', async (req, res) => {
             const { id } = req.params;
             const { fileUrl } = req.body;
 
-            try {
-                const result = await filesCollection.updateOne(
-                    { _id: new ObjectId(id) },
-                    { $set: { fileUrl } }
-                );
+            const result = await filesCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { fileUrl } }
+            );
 
-                if (result.modifiedCount > 0) {
-                    res.json({ success: true, message: "File updated successfully" });
-                } else {
-                    res.status(400).json({ error: "Update failed" });
-                }
-            } catch (error) {
-                console.error("Error updating file:", error);
-                res.status(500).json({ error: "Internal Server Error" });
+            if (result.modifiedCount > 0) {
+                res.json({ success: true, message: "File updated successfully" });
+            } else {
+                res.status(400).json({ error: "Update failed" });
             }
         });
 
-
-        // ✅ **Delete a Shared File**
+        // Delete File
         app.delete('/uploads/:id', async (req, res) => {
+            const id = req.params.id;
+            const result = await filesCollection.deleteOne({ _id: new ObjectId(id) });
+
+            if (result.deletedCount > 0) {
+                res.json({ message: "File deleted successfully" });
+            } else {
+                res.status(404).json({ error: "File not found" });
+            }
+        });
+
+        // // Save Text Data
+        // app.post("/save-text", async (req, res) => {
+        //     try {
+        //         const { username, email, text } = req.body;
+        //         const result = await textCollection.insertOne({ username, email, text });
+        //         res.json({ success: true, textId: result.insertedId });
+        //     } catch (error) {
+        //         res.status(500).json({ success: false, message: "Failed to save text." });
+        //     }
+        // });
+
+        app.post("/save-text", async (req, res) => {
             try {
-                if (!filesCollection) {
-                    return res.status(500).json({ error: "Database not initialized" });
+                console.log("Received data:", req.body); // Debugging line
+
+                const { content, username, email } = req.body;
+
+                if (!content || !username || !email) {
+                    return res.status(400).json({ success: false, message: "Text, username, and email are required." });
                 }
 
-                const id = req.params.id;
-                const result = await filesCollection.deleteOne({ _id: new ObjectId(id) });
+                const result = await textCollection.insertOne({ content, username, email, createdAt: new Date() });
 
-                if (result.deletedCount > 0) {
-                    res.json({ message: "File deleted successfully" });
+                if (result.insertedId) {
+                    const textLink = `http://localhost:5000/text/${result.insertedId}`;
+                    return res.json({ success: true, textId: result.insertedId, textLink });
                 } else {
-                    res.status(404).json({ error: "File not found" });
+                    return res.status(500).json({ success: false, message: "Failed to save text." });
                 }
             } catch (error) {
-                console.error("Error deleting file:", error);
-                res.status(500).json({ error: "Internal server error" });
+                console.error("Error saving text:", error);
+                return res.status(500).json({ success: false, message: "Server error. Please try again." });
+            }
+        });
+
+        app.get("/text/:id", async (req, res) => {
+            try {
+                const textId = req.params.id;
+                const textData = await textCollection.findOne({ _id: new ObjectId(textId) });
+
+                if (!textData) {
+                    return res.status(404).json({ success: false, message: "Text not found." });
+                }
+
+                res.json({ success: true, content: textData.content });
+            } catch (error) {
+                console.error("Error retrieving text:", error);
+                res.status(500).json({ success: false, message: "Server error." });
             }
         });
 
 
-        // Send a ping to confirm a successful connection
-        // await client.db("admin").command({ ping: 1 });
-        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
-    } finally {
-        // Ensures that the client will close when you finish/error
-        // await client.close();
+
+
+        // Root Route
+        app.get('/', (req, res) => {
+            res.send('Task is here');
+        });
+
+        // Start Server
+        app.listen(port, () => {
+            console.log(`Server is running on port: ${port}`);
+        });
+    } catch (error) {
+        console.error("Error connecting to MongoDB:", error);
     }
 }
+
 run().catch(console.dir);
-
-
-app.get('/', (req, res) => {
-    res.send('Task is hare')
-})
-app.listen(port, () => {
-    console.log(`Task at: ${port}`)
-})
-
-
