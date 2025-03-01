@@ -1,6 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const app = express();
+
+// jwt-1
+const jwt = require('jsonwebtoken');
+
 require('dotenv').config()
 
 const port = process.env.PORT || 5000;
@@ -31,6 +35,29 @@ async function run() {
         const userCollection = database.collection('users');
 
 
+        // jwt related API---- JWT-2
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+            res.send({ token });
+        })
+
+        // middleware----------JWT-3
+        const verifyToken = (req, res, next) => {
+            // console.log('Inside VerifyToken', req.headers.authorization);
+            if (!req.headers.authorization) {
+                return res.status(401).send({ message: 'forbidden access' });
+            }
+            const token = req.headers.authorization.split(' ')[1];
+            jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+                if (err) {
+                    return res.status(401).send({ message: 'forbidden-access' })
+                }
+                req.decoded = decoded;
+                next();
+            })
+            // next();
+        }
 
         // post user
         app.post('/users', async (req, res) => {
