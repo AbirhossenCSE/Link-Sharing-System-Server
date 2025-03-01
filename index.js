@@ -33,6 +33,7 @@ async function run() {
 
         const database = client.db('ShareLink');
         const userCollection = database.collection('users');
+        const filesCollection = database.collection('files');
 
 
         // jwt related API---- JWT-2
@@ -80,6 +81,27 @@ async function run() {
         });
 
 
+        // Route to handle file upload and user info
+        app.post('/upload', async (req, res) => {
+            const { username, email, fileUrl } = req.body;
+
+            if (!username || !email || !fileUrl) {
+                return res.status(400).json({ error: "Missing required fields" });
+            }
+
+            // Save the user and file data in MongoDB
+            const newFileData = {
+                username,
+                email,
+                fileUrl,
+                uploadedAt: new Date()
+            };
+
+            const result = await filesCollection.insertOne(newFileData);
+            res.status(201).json({ message: "File data saved successfully", data: result });
+        });
+
+
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
         // console.log("Pinged your deployment. You successfully connected to MongoDB!");
@@ -97,4 +119,5 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log(`Task at: ${port}`)
 })
+
 
