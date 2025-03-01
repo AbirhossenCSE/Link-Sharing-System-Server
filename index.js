@@ -135,16 +135,6 @@ async function run() {
             }
         });
 
-        // // Save Text Data
-        // app.post("/save-text", async (req, res) => {
-        //     try {
-        //         const { username, email, text } = req.body;
-        //         const result = await textCollection.insertOne({ username, email, text });
-        //         res.json({ success: true, textId: result.insertedId });
-        //     } catch (error) {
-        //         res.status(500).json({ success: false, message: "Failed to save text." });
-        //     }
-        // });
 
         app.post("/save-text", async (req, res) => {
             try {
@@ -156,10 +146,23 @@ async function run() {
                     return res.status(400).json({ success: false, message: "Text, username, and email are required." });
                 }
 
-                const result = await textCollection.insertOne({ content, username, email, createdAt: new Date() });
+                // Insert the text into the database
+                const result = await textCollection.insertOne({
+                    content,
+                    username,
+                    email,
+                    createdAt: new Date(),
+                });
 
                 if (result.insertedId) {
                     const textLink = `http://localhost:5000/text/${result.insertedId}`;
+
+                    // Save the generated text link into the database
+                    const updatedResult = await textCollection.updateOne(
+                        { _id: result.insertedId },
+                        { $set: { textLink } }
+                    );
+
                     return res.json({ success: true, textId: result.insertedId, textLink });
                 } else {
                     return res.status(500).json({ success: false, message: "Failed to save text." });
@@ -169,6 +172,23 @@ async function run() {
                 return res.status(500).json({ success: false, message: "Server error. Please try again." });
             }
         });
+
+        app.get("/texts", async (req, res) => {
+            try {
+                const texts = await textCollection.find().toArray(); // Get all documents from the collection
+
+                if (texts.length === 0) {
+                    return res.status(404).json({ success: false, message: "No text entries found." });
+                }
+
+                // Send the data as response
+                res.json({ success: true, texts });
+            } catch (error) {
+                console.error("Error fetching texts:", error);
+                res.status(500).json({ success: false, message: "Server error." });
+            }
+        });
+
 
         app.get("/text/:id", async (req, res) => {
             try {
@@ -185,6 +205,53 @@ async function run() {
                 res.status(500).json({ success: false, message: "Server error." });
             }
         });
+
+        // 🟢 Route to Edit Text Entry by ID
+        app.put("/text/:id", async (req, res) => {
+            try {
+                const textId = req.params.id;
+                const { content, username, email } = req.body; // Assume the body contains the updated content, username, and email
+
+                if (!content) {
+                    return res.status(400).json({ success: false, message: "Content is required to update." });
+                }
+
+                // Update the text entry with the new content
+                const updatedText = await textCollection.updateOne(
+                    { _id: new ObjectId(textId) },
+                    {
+                        $set: { content, username, email, updatedAt: new Date() } // Also update the `updatedAt` timestamp
+                    }
+                );
+
+                if (updatedText.modifiedCount === 0) {
+                    return res.status(404).json({ success: false, message: "Text not found or no changes made." });
+                }
+
+                res.json({ success: true, message: "Text updated successfully." });
+            } catch (error) {
+                console.error("Error updating text:", error);
+                res.status(500).json({ success: false, message: "Server error." });
+            }
+        });
+
+        app.delete("/texts/:id", async (req, res) => {
+            try {
+                const textId = req.params.id;
+                // Assuming `textCollection` is your MongoDB collection or array holding the text data.
+                const result = await textCollection.deleteOne({ _id: new ObjectId(textId) });
+
+                if (result.deletedCount === 0) {
+                    return res.status(404).json({ success: false, message: "Text not found." });
+                }
+
+                res.json({ success: true, message: "Text has been deleted." });
+            } catch (error) {
+                console.error("Error deleting text:", error);
+                res.status(500).json({ success: false, message: "Server error." });
+            }
+        });
+
 
 
 
