@@ -77,9 +77,10 @@ async function run() {
             }
         });
 
-        // Upload File
+
         app.post('/upload', async (req, res) => {
-            const { username, email, fileUrl } = req.body;
+            const { username, email, fileUrl, privacy, password } = req.body;
+
             if (!username || !email || !fileUrl) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
@@ -88,12 +89,15 @@ async function run() {
                 username,
                 email,
                 fileUrl,
-                uploadedAt: new Date()
+                privacy,
+                password: privacy === "private" ? password : null,
+                uploadedAt: new Date(),
             };
 
             const result = await filesCollection.insertOne(newFileData);
             res.status(201).json({ message: "File data saved successfully", data: result });
         });
+
 
         // Get User's Uploaded Files
         app.get('/uploads', async (req, res) => {
@@ -106,14 +110,44 @@ async function run() {
             res.json(userUploads);
         });
 
-        // Update File Link
+        // Get a single uploaded file by ID
+        app.get('/uploads/:id', async (req, res) => {
+            const { id } = req.params;
+
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ error: "Invalid ID format" });
+            }
+
+            const file = await filesCollection.findOne({ _id: new ObjectId(id) });
+
+            if (!file) {
+                return res.status(404).json({ error: "File not found" });
+            }
+
+            res.json(file);
+        });
+
+
         app.put('/uploads/:id', async (req, res) => {
             const { id } = req.params;
-            const { fileUrl } = req.body;
+            const { fileUrl, privacy, password } = req.body;
+
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ error: "Invalid ID format" });
+            }
+
+            const updateData = { fileUrl, privacy };
+
+            // Only include password if privacy is private
+            if (privacy === "private") {
+                updateData.password = password || "";
+            } else {
+                updateData.password = undefined; // Remove password if public
+            }
 
             const result = await filesCollection.updateOne(
                 { _id: new ObjectId(id) },
-                { $set: { fileUrl } }
+                { $set: updateData }
             );
 
             if (result.modifiedCount > 0) {
@@ -122,6 +156,7 @@ async function run() {
                 res.status(400).json({ error: "Update failed" });
             }
         });
+
 
         // Delete File
         app.delete('/uploads/:id', async (req, res) => {
@@ -136,32 +171,30 @@ async function run() {
         });
 
 
+
         app.post("/save-text", async (req, res) => {
             try {
-                console.log("Received data:", req.body); // Debugging line
-
-                const { content, username, email } = req.body;
+                console.log("Received data:", req.body);
+                const { content, username, email, privacy, password } = req.body;
 
                 if (!content || !username || !email) {
                     return res.status(400).json({ success: false, message: "Text, username, and email are required." });
                 }
 
-                // Insert the text into the database
-                const result = await textCollection.insertOne({
+                const newText = {
                     content,
                     username,
                     email,
+                    privacy,
+                    password: privacy === "private" ? password : null,
                     createdAt: new Date(),
-                });
+                };
+
+                const result = await textCollection.insertOne(newText);
 
                 if (result.insertedId) {
                     const textLink = `http://localhost:5000/text/${result.insertedId}`;
-
-                    // Save the generated text link into the database
-                    const updatedResult = await textCollection.updateOne(
-                        { _id: result.insertedId },
-                        { $set: { textLink } }
-                    );
+                    await textCollection.updateOne({ _id: result.insertedId }, { $set: { textLink } });
 
                     return res.json({ success: true, textId: result.insertedId, textLink });
                 } else {
@@ -169,9 +202,10 @@ async function run() {
                 }
             } catch (error) {
                 console.error("Error saving text:", error);
-                return res.status(500).json({ success: false, message: "Server error. Please try again." });
+                return res.status(500).json({ success: false, message: "Server error." });
             }
         });
+
 
         app.get("/texts", async (req, res) => {
             try {
@@ -206,22 +240,24 @@ async function run() {
             }
         });
 
-        // 🟢 Route to Edit Text Entry by ID
         app.put("/text/:id", async (req, res) => {
             try {
                 const textId = req.params.id;
-                const { content, username, email } = req.body; // Assume the body contains the updated content, username, and email
-
-                if (!content) {
-                    return res.status(400).json({ success: false, message: "Content is required to update." });
+                if (!ObjectId.isValid(textId)) {
+                    return res.status(400).json({ success: false, message: "Invalid ID format" });
                 }
 
-                // Update the text entry with the new content
+                const { text, privacy, password } = req.body;
+                if (!text || !privacy) {
+                    return res.status(400).json({ success: false, message: "Missing required fields" });
+                }
+
+                const updateData = { text, privacy, updatedAt: new Date() };
+                if (privacy === "private") updateData.password = password || ""; // Ensure password is handled
+
                 const updatedText = await textCollection.updateOne(
                     { _id: new ObjectId(textId) },
-                    {
-                        $set: { content, username, email, updatedAt: new Date() } // Also update the `updatedAt` timestamp
-                    }
+                    { $set: updateData }
                 );
 
                 if (updatedText.modifiedCount === 0) {
@@ -234,6 +270,7 @@ async function run() {
                 res.status(500).json({ success: false, message: "Server error." });
             }
         });
+
 
         app.delete("/texts/:id", async (req, res) => {
             try {
