@@ -142,7 +142,7 @@ async function run() {
             if (privacy === "private") {
                 updateData.password = password || "";
             } else {
-                updateData.password = undefined; // Remove password if public
+                updateData.password = undefined; 
             }
 
             const result = await filesCollection.updateOne(
@@ -322,7 +322,7 @@ async function run() {
                 }
 
                 const updateData = { text, privacy, updatedAt: new Date() };
-                if (privacy === "private") updateData.password = password || ""; // Ensure password is handled
+                if (privacy === "private") updateData.password = password || "";
 
                 const updatedText = await textCollection.updateOne(
                     { _id: new ObjectId(textId) },
