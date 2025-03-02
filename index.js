@@ -223,7 +223,7 @@ async function run() {
                 const result = await textCollection.insertOne(newText);
 
                 if (result.insertedId) {
-                    const textLink = `http://localhost:5000/text/${result.insertedId}`;
+                    const textLink = `https://link-sharing-system-server-three.vercel.app/text/${result.insertedId}`;
                     await textCollection.updateOne({ _id: result.insertedId }, { $set: { textLink } });
 
                     return res.json({ success: true, textId: result.insertedId, textLink });
@@ -253,6 +253,28 @@ async function run() {
             }
         });
 
+        app.get('/text', async (req, res) => {
+            try {
+                const { email } = req.query; // Extract email from query parameters
+
+                if (!email) {
+                    return res.status(400).json({ error: "Email is required" });
+                }
+
+                const texts = await textCollection.find({ email }).toArray();
+
+                if (!texts.length) {
+                    return res.status(404).json({ error: "No texts found for this email" });
+                }
+
+                res.json({ texts }); // Return array of texts
+            } catch (error) {
+                console.error("Error fetching text:", error);
+                res.status(500).json({ error: "Server error" });
+            }
+        });
+
+
 
         app.get("/text/:id", async (req, res) => {
             try {
@@ -271,18 +293,18 @@ async function run() {
         });
         app.post('/texts/private', async (req, res) => {
             const { id, password } = req.body;
-        
+
             // Find the text document in the database
             const text = await textCollection.findOne({ _id: new ObjectId(id) });
-        
+
             if (!text) {
                 return res.status(404).json({ error: "Text not found" });
             }
-        
+
             if (text.isPrivate && text.password !== password) {
                 return res.status(403).json({ error: "Incorrect password" });
             }
-        
+
             res.json({ success: true, textContent: text.textLink });
         });
 
@@ -335,7 +357,6 @@ async function run() {
                 res.status(500).json({ success: false, message: "Server error." });
             }
         });
-
 
 
 
