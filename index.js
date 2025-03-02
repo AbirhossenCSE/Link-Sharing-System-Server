@@ -171,6 +171,36 @@ async function run() {
         });
 
 
+        // for all page
+        app.get('/upload', async (req, res) => {
+            try {
+                const files = await filesCollection.find({}).toArray();
+                res.json(files);
+            } catch (error) {
+                console.error("Error fetching uploads:", error);
+                res.status(500).json({ error: "Failed to fetch uploads" });
+            }
+        });
+
+
+        app.post('/upload/private', async (req, res) => {
+            const { id, password } = req.body;
+
+            const file = await filesCollection.findOne({ _id: new ObjectId(id) });
+
+            if (!file) {
+                return res.status(404).json({ error: "File not found" });
+            }
+
+            if (file.isPrivate && file.password !== password) {
+                return res.status(403).json({ error: "Incorrect password" });
+            }
+
+            res.json({ success: true, fileUrl: file.fileUrl });
+        });
+
+
+
 
         app.post("/save-text", async (req, res) => {
             try {
@@ -239,6 +269,23 @@ async function run() {
                 res.status(500).json({ success: false, message: "Server error." });
             }
         });
+        app.post('/texts/private', async (req, res) => {
+            const { id, password } = req.body;
+        
+            // Find the text document in the database
+            const text = await textCollection.findOne({ _id: new ObjectId(id) });
+        
+            if (!text) {
+                return res.status(404).json({ error: "Text not found" });
+            }
+        
+            if (text.isPrivate && text.password !== password) {
+                return res.status(403).json({ error: "Incorrect password" });
+            }
+        
+            res.json({ success: true, textContent: text.textLink });
+        });
+
 
         app.put("/text/:id", async (req, res) => {
             try {
